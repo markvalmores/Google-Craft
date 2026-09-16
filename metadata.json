@@ -1,0 +1,7 @@
+{
+  "name": "Google Craft",
+  "description": "A Google Maps Minecraft adventure to explore real-world landmarks, build voxel structures, switch skins, and play in 34 low-latency global multiplayer servers.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

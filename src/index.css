@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+@layer utilities {
+  .font-minecraft {
+    font-family: 'Press Start 2P', monospace;
+  }
+  .font-pixel {
+    font-family: 'VT323', monospace;
+  }
+  .font-silkscreen {
+    font-family: 'Silkscreen', monospace;
+  }
+}
+
+/* Authentic Minecraft UI styles */
+.mc-text-shadow {
+  text-shadow: 2px 2px 0 #181818, -1px -1px 0 #181818, 1px -1px 0 #181818, -1px 1px 0 #181818;
+}
+
+.mc-title-shadow {
+  text-shadow: 4px 4px 0 #28241e, 6px 6px 0 #12100d;
+}
+
+.mc-btn {
+  font-family: 'Press Start 2P', monospace;
+  background-color: #6b6b6b;
+  border-top: 2px solid #8e8e8e;
+  border-left: 2px solid #8e8e8e;
+  border-bottom: 2px solid #2e2e2e;
+  border-right: 2px solid #2e2e2e;
+  box-shadow: inset -2px -2px 0 #373737, inset 2px 2px 0 #a0a0a0;
+  color: #e0e0e0;
+  text-shadow: 2px 2px 0 #222;
+  transition: all 0.05s ease;
+  user-select: none;
+}
+
+.mc-btn:hover:not(:disabled) {
+  background-color: #7b8e9b;
+  border-top: 2px solid #a3b8c8;
+  border-left: 2px solid #a3b8c8;
+  border-bottom: 2px solid #374652;
+  border-right: 2px solid #374652;
+  box-shadow: inset -2px -2px 0 #465a6b, inset 2px 2px 0 #bdd0e0;
+  color: #ffffa0;
+}
+
+.mc-btn:active:not(:disabled) {
+  border-top: 2px solid #2e2e2e;
+  border-left: 2px solid #2e2e2e;
+  border-bottom: 2px solid #8e8e8e;
+  border-right: 2px solid #8e8e8e;
+  box-shadow: inset 2px 2px 0 #373737, inset -2px -2px 0 #a0a0a0;
+  transform: translateY(1px);
+}
+
+.mc-btn-green {
+  background-color: #2e7d32;
+  border-top: 2px solid #4caf50;
+  border-left: 2px solid #4caf50;
+  border-bottom: 2px solid #1b5e20;
+  border-right: 2px solid #1b5e20;
+  box-shadow: inset -2px -2px 0 #1b5e20, inset 2px 2px 0 #81c784;
+  color: #ffffff;
+}
+.mc-btn-green:hover:not(:disabled) {
+  background-color: #388e3c;
+  color: #ffff8d;
+}
+
+.mc-panel {
+  background-color: rgba(18, 16, 20, 0.92);
+  border: 3px solid #4a4a4a;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.8), 0 8px 30px rgba(0, 0, 0, 0.7);
+}
+
+.mc-slot {
+  background-color: #8b8b8b;
+  border-top: 2px solid #373737;
+  border-left: 2px solid #373737;
+  border-bottom: 2px solid #ffffff;
+  border-right: 2px solid #ffffff;
+}
+
+.mc-slot.active {
+  border-color: #ffff55;
+  box-shadow: 0 0 8px #ffff55;
+}
+
+@keyframes mc-bounce {
+  0%, 100% {
+    transform: rotate(-15deg) scale(1);
+  }
+  50% {
+    transform: rotate(-15deg) scale(1.08);
+  }
+}
+
+.animate-mc-splash {
+  animation: mc-bounce 1.2s infinite ease-in-out;
+  transform-origin: center;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #181818;
+}
+::-webkit-scrollbar-thumb {
+  background: #555555;
+  border: 1px solid #333333;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #777777;
+}
+
