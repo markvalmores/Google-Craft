@@ -1,5 +1,4 @@
 // Google Craft - Minecraft Google Maps Adventure Main Application
-
 import React, { useState, useEffect } from 'react';
 import { VoxelWorld } from './components/VoxelWorld';
 import { GoogleMapsExplorer } from './components/GoogleMapsExplorer';
@@ -8,10 +7,18 @@ import { ServerBrowserModal } from './components/ServerBrowserModal';
 import { LeaderboardModal } from './components/LeaderboardModal';
 import { SkinSelectorModal } from './components/SkinSelectorModal';
 import { InventoryModal } from './components/InventoryModal';
+import { OccasionsModal } from './components/OccasionsModal';
+import { PerformanceModal } from './components/PerformanceModal';
+import { WeatherModal } from './components/WeatherModal';
+import { LocationOccasionPrompt } from './components/LocationOccasionPrompt';
+import { DeveloperCreditsModal } from './components/DeveloperCreditsModal';
 import { FAMOUS_LANDMARKS, Landmark } from './services/googleMapsService';
 import { MINECRAFT_SKINS, MinecraftSkin } from './services/skins';
 import { GameServer, serverNetwork } from './services/serverNetwork';
 import { soundEngine } from './services/soundEngine';
+import { holidaysService } from './services/holidaysAndOccasionsService';
+import { weatherSeasonService } from './services/weatherSeasonService';
+import { hardwareOptimizer } from './services/hardwareOptimizer';
 
 export default function App() {
   // Game state
@@ -31,6 +38,11 @@ export default function App() {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showSkinSelector, setShowSkinSelector] = useState(false);
   const [showInventory, setShowInventory] = useState(false);
+  const [showOccasionsModal, setShowOccasionsModal] = useState(false);
+  const [showPerformanceModal, setShowPerformanceModal] = useState(false);
+  const [showWeatherModal, setShowWeatherModal] = useState(false);
+  const [showLocationPrompt, setShowLocationPrompt] = useState(false);
+  const [showCreditsModal, setShowCreditsModal] = useState(false);
 
   // Live animated global player counter
   const [totalPlayers, setTotalPlayers] = useState(serverNetwork.getTotalPlayers());
@@ -40,19 +52,19 @@ export default function App() {
   const [userStats, setUserStats] = useState({
     blocksPlaced: 142,
     blocksBroken: 67,
-    landmarksExplored: 3,
-    score: 1890
+    landmarksExplored: 4,
+    score: 2150
   });
 
   // Splash texts in Minecraft style
   const SPLASH_TEXTS = [
-    'Now with Google Maps API!',
-    'Voxelizing the Earth!',
-    '34 Dedicated Global Servers!',
-    'Low Latency Sub-20ms Ping!',
-    'Explore the Eiffel Tower in 3D!',
-    'Architectural wonders in voxels!',
-    'Multiplayer real-time build!'
+    'Auto-Teleport to Global Celebrations & Holidays!',
+    'Up to 1000 FPS for Ultra High Refresh Displays!',
+    'Local Timezone Weather & Dynamic Seasons!',
+    'Mount Calvary Holy Week & Resurrection Dawn!',
+    'Christmas at the North Pole & New Year in Japan!',
+    'Now with Google Maps Places & 34 Dedicated Servers!',
+    'Mobile Touch & PS / Xbox Controller Ready!'
   ];
   const [splashText, setSplashText] = useState(SPLASH_TEXTS[0]);
 
@@ -66,18 +78,28 @@ export default function App() {
       setTimeout(() => setCounterAnimated(false), 500);
     });
 
+    // Auto-tune default landmark to detected season/holiday occasion on first load
+    const activeOccasion = holidaysService.detectActiveOccasion();
+    const autoLandmark = FAMOUS_LANDMARKS.find(l => l.id === activeOccasion.landmarkId);
+    if (autoLandmark) {
+      setCurrentLandmark(autoLandmark);
+    }
+
     return () => unsubscribe();
   }, []);
 
   // Launch Game with Proximity Matchmaking & 21s Opening Trailer
-  const handleStartGame = () => {
-    soundEngine.playLevelUp();
+  const handleStartGame = (skipPrompt = false) => {
+    if (!skipPrompt) {
+      soundEngine.playClick();
+      setShowLocationPrompt(true);
+      return;
+    }
 
-    // Automatically jump into optimal proximity server (Server 1 Alpha, 2 Delta, etc.)
+    soundEngine.playLevelUp();
     const { server } = serverNetwork.findOptimalServer();
     setCurrentServer(server);
 
-    // Trigger the 21-second opening trailer
     setIsOpeningTrailer(true);
     setInGame(true);
   };
@@ -120,14 +142,18 @@ export default function App() {
             }}
             onOpenInventory={() => setShowInventory(true)}
             onToggleMap={() => setShowMapsExplorer(prev => !prev)}
+            onOpenWeather={() => setShowWeatherModal(true)}
+            onOpenPerformance={() => setShowPerformanceModal(true)}
+            onOpenOccasions={() => setShowOccasionsModal(true)}
+            onOpenCredits={() => setShowCreditsModal(true)}
           />
 
-          {/* Top Bar HUD */}
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 z-30 pointer-events-auto" id="in-game-top-bar">
+          {/* Top Bar HUD - Clean non-overlapping centered toolbar */}
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 hidden lg:flex items-center gap-1.5 z-30 pointer-events-auto bg-stone-900/80 backdrop-blur-md px-3 py-1.5 border border-stone-700/80 shadow-2xl rounded" id="in-game-top-bar">
             {/* Live Global Players Counter */}
-            <div className="bg-black/75 border border-stone-700 px-3 py-1.5 flex items-center gap-2 text-xs font-pixel shadow-lg">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              <span className="text-stone-300">GLOBAL PLAYERS:</span>
+            <div className="flex items-center gap-1.5 text-[11px] font-pixel pr-2 border-r border-stone-700">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-stone-300">ONLINE:</span>
               <span className={`font-minecraft text-emerald-400 font-bold transition-all ${
                 counterAnimated ? 'scale-110 text-amber-300' : ''
               }`}>
@@ -141,10 +167,10 @@ export default function App() {
                 soundEngine.playClick();
                 setShowMapsExplorer(true);
               }}
-              className="mc-btn px-3 py-1.5 text-xs flex items-center gap-1 cursor-pointer"
+              className="mc-btn px-2.5 py-1 text-[11px] flex items-center gap-1 cursor-pointer"
               id="btn-hud-maps"
             >
-              🗺️ Maps [M]
+              🗺️ Maps
             </button>
 
             {/* 34 Servers Browser */}
@@ -153,10 +179,10 @@ export default function App() {
                 soundEngine.playClick();
                 setShowServerBrowser(true);
               }}
-              className="mc-btn px-3 py-1.5 text-xs flex items-center gap-1 cursor-pointer"
+              className="mc-btn px-2.5 py-1 text-[11px] flex items-center gap-1 cursor-pointer"
               id="btn-hud-servers"
             >
-              🌐 {currentServer.name} ({currentServer.pingMs}ms)
+              🌐 {currentServer.name}
             </button>
 
             {/* Skin Selector */}
@@ -165,7 +191,7 @@ export default function App() {
                 soundEngine.playClick();
                 setShowSkinSelector(true);
               }}
-              className="mc-btn px-3 py-1.5 text-xs flex items-center gap-1 cursor-pointer"
+              className="mc-btn px-2.5 py-1 text-[11px] flex items-center gap-1 cursor-pointer"
               id="btn-hud-skin"
             >
               👕 {currentSkin.name}
@@ -177,10 +203,22 @@ export default function App() {
                 soundEngine.playClick();
                 setShowLeaderboard(true);
               }}
-              className="mc-btn px-3 py-1.5 text-xs flex items-center gap-1 cursor-pointer"
+              className="mc-btn px-2.5 py-1 text-[11px] flex items-center gap-1 cursor-pointer"
               id="btn-hud-leaderboard"
             >
               🏆 Rank
+            </button>
+
+            {/* Credits (Mark David V. Valmores) */}
+            <button
+              onClick={() => {
+                soundEngine.playClick();
+                setShowCreditsModal(true);
+              }}
+              className="mc-btn px-2.5 py-1 text-[11px] flex items-center gap-1 cursor-pointer text-amber-300"
+              id="btn-hud-credits-top"
+            >
+              👨‍💻 Credits
             </button>
 
             {/* Menu / Return to Title */}
@@ -189,10 +227,10 @@ export default function App() {
                 soundEngine.playClick();
                 setInGame(false);
               }}
-              className="mc-btn px-3 py-1.5 text-xs text-rose-300 hover:text-white cursor-pointer"
+              className="mc-btn px-2.5 py-1 text-[11px] text-rose-300 hover:text-white cursor-pointer ml-1"
               id="btn-hud-exit-title"
             >
-              🚪 Title Screen
+              🚪 Title
             </button>
           </div>
 
@@ -208,12 +246,12 @@ export default function App() {
         </div>
       ) : (
         /* TITLE SCREEN: "Google Craft" in Minecraft Fonts */
-        <div className="relative w-full h-full flex flex-col items-center justify-between p-6 overflow-hidden" id="title-screen-container">
+        <div className="relative w-full h-full flex flex-col items-center justify-between p-4 sm:p-6 overflow-y-auto" id="title-screen-container">
           {/* 30-Second Background Gameplay Trailer */}
           <GameplayTrailer30s isBackground={true} />
 
-          {/* Top Header: Live Counter & Trailer Access */}
-          <div className="relative z-10 w-full max-w-6xl flex items-center justify-between">
+          {/* Top Header: Live Counter, Occasions & Optimizer Access */}
+          <div className="relative z-10 w-full max-w-6xl flex flex-wrap items-center justify-between gap-3">
             {/* Animated Player Counter */}
             <div className="bg-stone-900/90 border-2 border-stone-700 px-4 py-2 flex items-center gap-3 shadow-2xl">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -229,156 +267,284 @@ export default function App() {
               </div>
             </div>
 
-            {/* 30s Gameplay Trailer Button */}
-            <button
-              onClick={() => {
-                soundEngine.playLevelUp();
-                setShowGameplayTrailer(true);
-              }}
-              className="mc-btn px-4 py-2 text-xs font-minecraft text-amber-300 flex items-center gap-2 cursor-pointer hover:scale-105 transition-transform"
-              id="btn-play-gameplay-trailer"
-            >
-              🎬 Watch 30s Gameplay Trailer
-            </button>
+            {/* Quick Action Badges */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  soundEngine.playClick();
+                  setShowCreditsModal(true);
+                }}
+                className="mc-btn px-3 py-2 text-xs font-minecraft text-amber-300 flex items-center gap-1.5 cursor-pointer hover:scale-105 transition-transform border-amber-500/80 shadow-[0_0_10px_rgba(245,158,11,0.3)]"
+                id="btn-title-credits-badge"
+              >
+                👨‍💻 Credits (1 Dev)
+              </button>
+
+              <button
+                onClick={() => {
+                  soundEngine.playClick();
+                  setShowOccasionsModal(true);
+                }}
+                className="mc-btn px-3 py-2 text-xs font-minecraft text-amber-300 flex items-center gap-1.5 cursor-pointer hover:scale-105 transition-transform"
+                id="btn-title-occasions"
+              >
+                🎉 Celebrations
+              </button>
+
+              <button
+                onClick={() => {
+                  soundEngine.playClick();
+                  setShowPerformanceModal(true);
+                }}
+                className="mc-btn px-3 py-2 text-xs font-minecraft text-cyan-300 flex items-center gap-1.5 cursor-pointer hover:scale-105 transition-transform"
+                id="btn-title-performance"
+              >
+                ⚡ 1000 FPS Mode
+              </button>
+
+              <button
+                onClick={() => {
+                  soundEngine.playLevelUp();
+                  setShowGameplayTrailer(true);
+                }}
+                className="mc-btn px-3 py-2 text-xs font-minecraft text-emerald-300 flex items-center gap-1.5 cursor-pointer hover:scale-105 transition-transform"
+                id="btn-play-gameplay-trailer"
+              >
+                🎬 30s Trailer
+              </button>
+            </div>
           </div>
 
           {/* Center Logo & Title: Google Craft in Minecraft Fonts */}
-          <div className="relative z-10 flex flex-col items-center my-auto">
-            {/* Minecraft Style Pixel Logo */}
+          <div className="relative z-10 flex flex-col items-center my-auto py-6">
             <div className="relative text-center">
               <h1 className="text-4xl sm:text-6xl md:text-7xl font-minecraft tracking-tight text-white mc-title-shadow select-none">
                 GOOGLE <span className="text-amber-400">CRAFT</span>
               </h1>
-              <p className="text-xs sm:text-sm font-minecraft text-stone-300 tracking-widest mt-1">
-                MINECRAFT REAL-WORLD MAP ADVENTURE
-              </p>
 
-              {/* Tilting Yellow Splash Text */}
-              <div className="absolute -bottom-4 right-0 sm:-right-8 animate-mc-splash pointer-events-none">
-                <span className="font-minecraft text-xs sm:text-sm text-yellow-300 mc-text-shadow px-2 py-0.5 whitespace-nowrap">
-                  {splashText}
-                </span>
+              {/* Minecraft Animated Splash Text */}
+              <div className="absolute -right-4 sm:-right-8 -bottom-4 sm:-bottom-6 transform rotate-[-12deg] bg-amber-400 text-stone-950 font-minecraft font-bold px-2.5 py-1 text-xs sm:text-sm shadow-xl animate-bounce">
+                {splashText}
               </div>
             </div>
 
-            {/* Landmark Quick Badge */}
-            <div className="mt-8 bg-black/60 border border-stone-700 px-4 py-1.5 text-xs font-pixel text-stone-300 flex items-center gap-2">
-              <span>Current World Landmark:</span>
-              <strong className="text-amber-300">{currentLandmark.flag} {currentLandmark.name}</strong>
+            {/* Prominent 1-Developer Attribution Badge */}
+            <button
+              onClick={() => {
+                soundEngine.playClick();
+                setShowCreditsModal(true);
+              }}
+              className="mt-4 inline-flex items-center gap-2 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/60 px-3.5 py-1.5 rounded-full text-xs font-minecraft text-amber-200 shadow-md cursor-pointer transition-colors"
+              id="btn-banner-developer-credits"
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              <span>Made by 1 Developer <strong className="text-white underline">Mark David V. Valmores</strong></span>
+              <span className="text-amber-400">★ View Profile</span>
+            </button>
+
+            <p className="mt-4 text-xs sm:text-sm font-pixel text-stone-300 max-w-xl text-center bg-stone-900/80 px-4 py-2 border border-stone-700 shadow-xl">
+              Real-world Google Maps landmarks rendered in procedural 3D voxels • Dynamic timezone weather & holiday celebrations • Ultra high refresh rate support up to 1000 FPS
+            </p>
+
+            {/* Username Input Field */}
+            <div className="mt-4 flex items-center gap-2 bg-stone-900/90 border-2 border-stone-600 px-3 py-1.5 shadow-xl">
+              <span className="text-xs font-minecraft text-stone-400">PLAYER NAME:</span>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value.slice(0, 16))}
+                className="bg-stone-950 border border-stone-700 px-2.5 py-1 text-xs font-minecraft text-amber-300 focus:outline-none focus:border-amber-400 w-36 sm:w-44"
+                placeholder="Steve"
+                id="input-player-name"
+              />
+            </div>
+          </div>
+
+          {/* Bottom Main Navigation Menu Buttons */}
+          <div className="relative z-10 w-full max-w-md flex flex-col gap-2.5 mb-2">
+            {/* Play World Button */}
+            <button
+              onClick={() => handleStartGame(false)}
+              className="mc-btn-green py-3.5 px-6 text-sm sm:text-base font-minecraft text-white font-bold tracking-wide shadow-2xl flex items-center justify-center gap-3 cursor-pointer hover:scale-102 transition-transform"
+              id="btn-play-game"
+            >
+              <span>⚔️</span>
+              <span>PLAY WORLD (AUTO-SYNC TIMEZONE)</span>
+              <span>🚀</span>
+            </button>
+
+            {/* 2-Column Sub Menu Buttons */}
+            <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => {
                   soundEngine.playClick();
                   setShowMapsExplorer(true);
                 }}
-                className="text-cyan-400 underline ml-2 cursor-pointer hover:text-cyan-300"
+                className="mc-btn py-2.5 px-3 text-xs font-minecraft text-stone-200 flex items-center justify-center gap-2 cursor-pointer"
+                id="btn-menu-maps"
               >
-                Change Map
+                🗺️ Explore Maps
               </button>
-            </div>
 
-            {/* Main Menu Buttons */}
-            <div className="w-full max-w-sm flex flex-col gap-2.5 mt-6" id="title-buttons-stack">
               <button
-                onClick={handleStartGame}
-                className="mc-btn-green py-3.5 px-6 text-sm md:text-base font-minecraft text-white cursor-pointer shadow-xl flex items-center justify-center gap-2"
-                id="btn-start-game"
+                onClick={() => {
+                  soundEngine.playClick();
+                  setShowOccasionsModal(true);
+                }}
+                className="mc-btn py-2.5 px-3 text-xs font-minecraft text-amber-300 flex items-center justify-center gap-2 cursor-pointer"
+                id="btn-menu-occasions"
               >
-                ▶ Start Adventure (Auto Server)
+                🎉 Celebrations
               </button>
 
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => {
-                    soundEngine.playClick();
-                    setShowServerBrowser(true);
-                  }}
-                  className="mc-btn py-2.5 px-3 text-xs font-minecraft cursor-pointer"
-                  id="btn-server-browser"
-                >
-                  🌐 34 Servers
-                </button>
+              <button
+                onClick={() => {
+                  soundEngine.playClick();
+                  setShowServerBrowser(true);
+                }}
+                className="mc-btn py-2.5 px-3 text-xs font-minecraft text-stone-200 flex items-center justify-center gap-2 cursor-pointer"
+                id="btn-menu-servers"
+              >
+                🌐 34 Servers
+              </button>
 
-                <button
-                  onClick={() => {
-                    soundEngine.playClick();
-                    setShowMapsExplorer(true);
-                  }}
-                  className="mc-btn py-2.5 px-3 text-xs font-minecraft cursor-pointer"
-                  id="btn-title-maps"
-                >
-                  🗺️ Google Maps
-                </button>
-              </div>
+              <button
+                onClick={() => {
+                  soundEngine.playClick();
+                  setShowSkinSelector(true);
+                }}
+                className="mc-btn py-2.5 px-3 text-xs font-minecraft text-stone-200 flex items-center justify-center gap-2 cursor-pointer"
+                id="btn-menu-skin"
+              >
+                👕 Skin Wardrobe
+              </button>
 
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => {
-                    soundEngine.playClick();
-                    setShowSkinSelector(true);
-                  }}
-                  className="mc-btn py-2.5 px-3 text-xs font-minecraft cursor-pointer"
-                  id="btn-title-skins"
-                >
-                  👕 Skin: {currentSkin.name.slice(0, 7)}..
-                </button>
+              <button
+                onClick={() => {
+                  soundEngine.playClick();
+                  setShowWeatherModal(true);
+                }}
+                className="mc-btn py-2.5 px-3 text-xs font-minecraft text-cyan-300 flex items-center justify-center gap-2 cursor-pointer"
+                id="btn-menu-weather"
+              >
+                🌦️ Weather & Seasons
+              </button>
 
-                <button
-                  onClick={() => {
-                    soundEngine.playClick();
-                    setShowLeaderboard(true);
-                  }}
-                  className="mc-btn py-2.5 px-3 text-xs font-minecraft cursor-pointer"
-                  id="btn-title-leaderboard"
-                >
-                  🏆 Leaderboard
-                </button>
-              </div>
+              <button
+                onClick={() => {
+                  soundEngine.playClick();
+                  setShowCreditsModal(true);
+                }}
+                className="mc-btn py-2.5 px-3 text-xs font-minecraft text-amber-300 flex items-center justify-center gap-2 cursor-pointer border-amber-600/70"
+                id="btn-menu-developer-credits"
+              >
+                👨‍💻 Solo Dev Credits
+              </button>
             </div>
           </div>
 
-          {/* Footer Info & API Key notice */}
-          <div className="relative z-10 w-full max-w-6xl flex flex-col sm:flex-row items-center justify-between text-xs font-pixel text-stone-400 pt-4 border-t border-stone-800/80">
-            <div className="flex items-center gap-2">
-              <span>Connected Node:</span>
-              <strong className="text-amber-400">{currentServer.name}</strong>
-              <span className="text-emerald-400">({currentServer.pingMs}ms)</span>
-              <span>• Proximity Matchmaking Enabled</span>
+          {/* Footer Info with Developer Credit */}
+          <div className="relative z-10 text-[10px] font-pixel text-stone-300 text-center space-y-1">
+            <div className="text-amber-300 font-minecraft font-semibold">
+              ⭐ Made by 1 Developer Mark David V. Valmores ⭐
             </div>
-
-            <div className="text-[11px] text-stone-400 mt-1 sm:mt-0">
-              Google Maps Key Loaded: AIzaSyDsXmn4Uz0OGotNhv99x6qUjzRrUu4rMnc
+            <div className="text-stone-400">
+              Google Craft v2.5 • Google Maps Platform & WebGL 2.0 • Ultra 1000 FPS • Praise God Yahusha Yahua Holy Spirit Lord Jesus Christ Amen
             </div>
           </div>
         </div>
       )}
 
       {/* MODALS */}
-
-      {/* 30-Second Fullscreen Gameplay Trailer */}
-      {showGameplayTrailer && (
-        <GameplayTrailer30s onClose={() => setShowGameplayTrailer(false)} />
+      {showLocationPrompt && (
+        <LocationOccasionPrompt
+          onConfirmLocation={(lat, lng, name) => {
+            const custom: Landmark = {
+              id: 'custom_local_spawn',
+              name: name || 'My Local Region',
+              location: 'Detected Geolocation Area',
+              country: 'Local',
+              flag: '📍',
+              lat,
+              lng,
+              altitudeMeters: 50,
+              category: 'Modern Wonder',
+              description: 'Custom coordinates from your real device location.',
+              historicalFact: 'Voxelized real-world terrain surrounding your GPS coordinate matrix.',
+              recommendedTime: 'day',
+              voxelPalette: ['stone', 'grass', 'oak_planks', 'water', 'glowstone']
+            };
+            setCurrentLandmark(custom);
+            handleStartGame(true);
+          }}
+          onSelectOccasion={(landmark) => {
+            setCurrentLandmark(landmark);
+            handleStartGame(true);
+          }}
+          onDefaultTimesSquare={() => {
+            const timesSquare = FAMOUS_LANDMARKS.find(l => l.id === 'times_square') || FAMOUS_LANDMARKS[0];
+            setCurrentLandmark(timesSquare);
+            handleStartGame(true);
+          }}
+          onClose={() => setShowLocationPrompt(false)}
+        />
       )}
 
-      {/* Google Maps Explorer Modal */}
+      {showOccasionsModal && (
+        <OccasionsModal
+          currentLandmark={currentLandmark}
+          onSelectOccasion={(landmark) => {
+            setCurrentLandmark(landmark);
+            if (!inGame) {
+              handleStartGame(true);
+            }
+          }}
+          onClose={() => setShowOccasionsModal(false)}
+        />
+      )}
+
+      {showPerformanceModal && (
+        <PerformanceModal
+          onClose={() => setShowPerformanceModal(false)}
+          onSettingsChanged={(_settings) => {}}
+        />
+      )}
+
+      {showWeatherModal && (
+        <WeatherModal
+          onClose={() => setShowWeatherModal(false)}
+          onWeatherChanged={(_weatherState) => {}}
+        />
+      )}
+
       {showMapsExplorer && (
         <GoogleMapsExplorer
           currentLandmark={currentLandmark}
-          onSelectLandmark={(landmark) => setCurrentLandmark(landmark)}
+          onSelectLandmark={(landmark) => {
+            setCurrentLandmark(landmark);
+            if (!inGame) {
+              handleStartGame(true);
+            }
+          }}
           onClose={() => setShowMapsExplorer(false)}
         />
       )}
 
-      {/* 34-Server Browser & Lobby Maker Modal */}
       {showServerBrowser && (
         <ServerBrowserModal
           currentServer={currentServer}
           onSelectServer={(server) => setCurrentServer(server)}
-          onSelectLandmark={(landmark) => setCurrentLandmark(landmark)}
           onClose={() => setShowServerBrowser(false)}
         />
       )}
 
-      {/* Skin Selector Modal */}
+      {showLeaderboard && (
+        <LeaderboardModal
+          userStats={userStats}
+          onClose={() => setShowLeaderboard(false)}
+        />
+      )}
+
       {showSkinSelector && (
         <SkinSelectorModal
           currentSkin={currentSkin}
@@ -387,23 +553,30 @@ export default function App() {
         />
       )}
 
-      {/* Global Leaderboard Modal */}
-      {showLeaderboard && (
-        <LeaderboardModal
-          userStats={userStats}
-          username={username}
-          onClose={() => setShowLeaderboard(false)}
+      {showInventory && (
+        <InventoryModal
+          onClose={() => setShowInventory(false)}
         />
       )}
 
-      {/* Creative Inventory Modal */}
-      {showInventory && (
-        <InventoryModal
-          onSelectBlock={(idx) => {
-            // Selected block
-          }}
-          onClose={() => setShowInventory(false)}
+      {showCreditsModal && (
+        <DeveloperCreditsModal
+          onClose={() => setShowCreditsModal(false)}
         />
+      )}
+
+      {showGameplayTrailer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
+          <div className="relative w-full max-w-4xl aspect-video border-2 border-stone-600 bg-stone-900 shadow-2xl flex flex-col">
+            <GameplayTrailer30s onComplete={() => setShowGameplayTrailer(false)} />
+            <button
+              onClick={() => setShowGameplayTrailer(false)}
+              className="absolute top-4 right-4 z-50 mc-btn px-3 py-1.5 text-xs text-white cursor-pointer"
+            >
+              ✕ Close Trailer
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1,13 +1,15 @@
-// Authentic Minecraft & Cinematic Audio Engine via Web Audio API
+// Authentic Minecraft & Cinematic Audio Engine via Web Audio API with Weather, Fireworks & Festive SFX
 
 class SoundEngine {
   private ctx: AudioContext | null = null;
   private musicGain: GainNode | null = null;
   private sfxGain: GainNode | null = null;
+  private weatherGain: GainNode | null = null;
   private isMuted: boolean = false;
   private isMusicPlaying: boolean = false;
-  private musicOscillators: (OscillatorNode | GainNode)[] = [];
   private trailerInterval: number | null = null;
+  private rainNode: AudioNode | null = null;
+  private windNode: AudioNode | null = null;
 
   private initContext() {
     if (!this.ctx) {
@@ -15,12 +17,15 @@ class SoundEngine {
       this.ctx = new AudioCtx();
       this.musicGain = this.ctx.createGain();
       this.sfxGain = this.ctx.createGain();
+      this.weatherGain = this.ctx.createGain();
 
       this.musicGain.gain.setValueAtTime(0.22, this.ctx.currentTime);
       this.sfxGain.gain.setValueAtTime(0.35, this.ctx.currentTime);
+      this.weatherGain.gain.setValueAtTime(0.18, this.ctx.currentTime);
 
       this.musicGain.connect(this.ctx.destination);
       this.sfxGain.connect(this.ctx.destination);
+      this.weatherGain.connect(this.ctx.destination);
     }
     if (this.ctx.state === 'suspended') {
       this.ctx.resume();
@@ -29,9 +34,10 @@ class SoundEngine {
 
   public setMuted(muted: boolean) {
     this.isMuted = muted;
-    if (this.musicGain && this.sfxGain && this.ctx) {
+    if (this.musicGain && this.sfxGain && this.weatherGain && this.ctx) {
       this.musicGain.gain.setValueAtTime(muted ? 0 : 0.22, this.ctx.currentTime);
       this.sfxGain.gain.setValueAtTime(muted ? 0 : 0.35, this.ctx.currentTime);
+      this.weatherGain.gain.setValueAtTime(muted ? 0 : 0.18, this.ctx.currentTime);
     }
   }
 
@@ -72,7 +78,6 @@ class SoundEngine {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
-    // Noise buffer for tactile crunchy Minecraft block sound
     const bufferSize = this.ctx.sampleRate * 0.08;
     const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
     const data = buffer.getChannelData(0);
@@ -85,7 +90,7 @@ class SoundEngine {
 
     const filter = this.ctx.createBiquadFilter();
 
-    if (blockType === 'wood' || blockType === 'planks') {
+    if (blockType === 'wood' || blockType === 'oak_planks' || blockType === 'log') {
       filter.type = 'bandpass';
       filter.frequency.setValueAtTime(650, now);
       osc.frequency.setValueAtTime(220, now);
@@ -94,12 +99,15 @@ class SoundEngine {
       filter.type = 'highpass';
       filter.frequency.setValueAtTime(1800, now);
       osc.frequency.setValueAtTime(880, now);
-    } else if (blockType === 'leaves' || blockType === 'grass') {
+    } else if (blockType === 'leaves' || blockType === 'oak_leaves' || blockType === 'grass') {
       filter.type = 'lowpass';
       filter.frequency.setValueAtTime(900, now);
       osc.frequency.setValueAtTime(160, now);
+    } else if (blockType === 'snow' || blockType === 'present') {
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(500, now);
+      osc.frequency.setValueAtTime(180, now);
     } else {
-      // stone / brick / diamond / default
       filter.type = 'bandpass';
       filter.frequency.setValueAtTime(1100, now);
       osc.frequency.setValueAtTime(280, now);
@@ -124,6 +132,10 @@ class SoundEngine {
     noise.stop(now + 0.08);
     osc.start(now);
     osc.stop(now + 0.08);
+  }
+
+  public playPlace(blockType: string = 'stone') {
+    this.playBlockPlace(blockType);
   }
 
   // Block break sound (crunching break with debris)
@@ -160,6 +172,10 @@ class SoundEngine {
     noise.stop(now + 0.12);
   }
 
+  public playBreak(blockType: string = 'stone') {
+    this.playBlockBreak(blockType);
+  }
+
   // Footstep sound
   public playFootstep() {
     if (this.isMuted) return;
@@ -182,6 +198,10 @@ class SoundEngine {
 
     osc.start(now);
     osc.stop(now + 0.07);
+  }
+
+  public playStep(_material?: string) {
+    this.playFootstep();
   }
 
   // Jump sound
@@ -257,6 +277,161 @@ class SoundEngine {
 
     osc.start(now);
     osc.stop(now + 0.52);
+  }
+
+  // Fireworks Launch & Pop Sound
+  public playFirework() {
+    if (this.isMuted) return;
+    this.initContext();
+    if (!this.ctx || !this.sfxGain) return;
+
+    const now = this.ctx.currentTime;
+
+    // 1. Whistle rocket up
+    const osc = this.ctx.createOscillator();
+    const whistleGain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(400, now);
+    osc.frequency.exponentialRampToValueAtTime(1200, now + 0.3);
+
+    whistleGain.gain.setValueAtTime(0.15, now);
+    whistleGain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+
+    osc.connect(whistleGain);
+    whistleGain.connect(this.sfxGain);
+
+    osc.start(now);
+    osc.stop(now + 0.3);
+
+    // 2. Explosion boom at peak
+    const bufferSize = this.ctx.sampleRate * 0.4;
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.25));
+    }
+
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(320, now + 0.28);
+
+    const boomGain = this.ctx.createGain();
+    boomGain.gain.setValueAtTime(0.001, now);
+    boomGain.gain.setValueAtTime(0.4, now + 0.28);
+    boomGain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+
+    noise.connect(filter);
+    filter.connect(boomGain);
+    boomGain.connect(this.sfxGain);
+
+    noise.start(now + 0.28);
+    noise.stop(now + 0.7);
+  }
+
+  // Thunderclap Sound
+  public playThunder() {
+    if (this.isMuted) return;
+    this.initContext();
+    if (!this.ctx || !this.sfxGain) return;
+
+    const now = this.ctx.currentTime;
+    const bufferSize = this.ctx.sampleRate * 1.5;
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * (0.8 + Math.sin(i * 0.0005) * 0.2) * Math.exp(-i / (bufferSize * 0.35));
+    }
+
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(180, now);
+    filter.frequency.linearRampToValueAtTime(80, now + 1.2);
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.6, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 1.4);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.sfxGain);
+
+    noise.start(now);
+    noise.stop(now + 1.5);
+  }
+
+  // Festive Holiday Jingle Chime
+  public playFestiveChime() {
+    if (this.isMuted) return;
+    this.initContext();
+    if (!this.ctx || !this.sfxGain) return;
+
+    const now = this.ctx.currentTime;
+    // Jingle bells notes (E5, E5, E5)
+    const notes = [659.25, 659.25, 659.25, 659.25, 659.25, 659.25, 659.25, 783.99, 523.25, 587.33, 659.25];
+    const delays = [0, 0.16, 0.32, 0.64, 0.8, 0.96, 1.28, 1.44, 1.6, 1.76, 2.0];
+
+    notes.forEach((freq, idx) => {
+      const t = now + (delays[idx] || idx * 0.15);
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t);
+
+      gain.gain.setValueAtTime(0.2, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+
+      osc.connect(gain);
+      gain.connect(this.sfxGain!);
+
+      osc.start(t);
+      osc.stop(t + 0.3);
+    });
+  }
+
+  // Continuous Rain SFX Loop
+  public setRainActive(active: boolean) {
+    this.initContext();
+    if (!this.ctx || !this.weatherGain) return;
+
+    if (active && !this.rainNode) {
+      const bufferSize = this.ctx.sampleRate * 2;
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1;
+      }
+
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+      noise.loop = true;
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(1400, this.ctx.currentTime);
+      filter.Q.setValueAtTime(0.8, this.ctx.currentTime);
+
+      const rainGain = this.ctx.createGain();
+      rainGain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+
+      noise.connect(filter);
+      filter.connect(rainGain);
+      rainGain.connect(this.weatherGain);
+
+      noise.start();
+      this.rainNode = noise;
+    } else if (!active && this.rainNode) {
+      try {
+        (this.rainNode as AudioBufferSourceNode).stop();
+      } catch (_) {}
+      this.rainNode = null;
+    }
   }
 
   // Ambient C418 style calm generative piano music
