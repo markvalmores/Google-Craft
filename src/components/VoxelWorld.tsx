@@ -155,6 +155,9 @@ export const VoxelWorld: React.FC<VoxelWorldProps> = ({
 
   // Input state
   const keysPressed = useRef<{ [key: string]: boolean }>({});
+  const touchMoveInput = useRef<{ forward: number; strafe: number }>({ forward: 0, strafe: 0 });
+  const gamepadMoveInput = useRef<{ forward: number; strafe: number }>({ forward: 0, strafe: 0 });
+  const jumpRequested = useRef(false);
   const playerPos = useRef(new THREE.Vector3(initialSpawn.x, initialSpawn.y, initialSpawn.z));
   const playerVelocity = useRef(new THREE.Vector3(0, 0, 0));
   const cameraYaw = useRef(initialSpawn.yaw);
@@ -164,6 +167,35 @@ export const VoxelWorld: React.FC<VoxelWorldProps> = ({
   const miningProgress = useRef(0);
   const miningTarget = useRef<{ key: string; mesh: THREE.Mesh; x: number; y: number; z: number } | null>(null);
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+
+  // Helper to calculate exact solid ground height under any coordinate
+  const getGroundHeightAt = useCallback((x: number, z: number, currentY: number): number => {
+    let highestY = 0; // Baseline ground at y = 0 -> standing feet at y = 1.0
+    const sampleOffsets = [
+      [0, 0],
+      [0.25, 0.25],
+      [-0.25, 0.25],
+      [0.25, -0.25],
+      [-0.25, -0.25]
+    ];
+
+    for (const [ox, oz] of sampleOffsets) {
+      const bx = Math.round(x + ox);
+      const bz = Math.round(z + oz);
+      const maxYToCheck = Math.min(60, Math.floor(currentY + 1.2));
+      for (let checkY = maxYToCheck; checkY >= 0; checkY--) {
+        const key = `${bx},${checkY},${bz}`;
+        if (blocksMapRef.current.has(key)) {
+          if (checkY > highestY) {
+            highestY = checkY;
+          }
+          break;
+        }
+      }
+    }
+
+    return highestY + 1.0;
+  }, []);
 
   // Weather particle systems
   const weatherParticlesRef = useRef<THREE.Points | null>(null);
@@ -286,17 +318,21 @@ export const VoxelWorld: React.FC<VoxelWorldProps> = ({
       blocksMapRef.current.set(key, { x, y, z, type, mesh });
     };
 
-    // Ground Bedrock & Grass Plaza
-    const groundRadius = 32;
+    // Ground Bedrock & Surface Plaza (Solid Wide Radius 64)
+    const groundRadius = 64;
     for (let x = -groundRadius; x <= groundRadius; x++) {
       for (let z = -groundRadius; z <= groundRadius; z++) {
-        if (x * x + z * z <= groundRadius * groundRadius) {
+        if (Math.abs(x) <= groundRadius && Math.abs(z) <= groundRadius) {
           const groundBlock = (landmark.id === 'giza_pyramid' || landmark.category === 'Ancient Monument') ? 'sandstone' :
             (landmark.id === 'north_pole_xmas' ? 'quartz' :
             (landmark.id === 'times_square' ? 'stone' :
             (landmark.id === 'halloween_cemetery' ? 'grass' :
             (landmark.id === 'mount_calvary_holy_week' ? 'sandstone' : 'grass'))));
+          
+          // Surface block at y = 0
           addBlock(x, 0, z, groundBlock);
+          // Bedrock foundation block at y = -1
+          addBlock(x, -1, z, 'bedrock');
         }
       }
     }
@@ -642,82 +678,106 @@ export const VoxelWorld: React.FC<VoxelWorldProps> = ({
       }
     }
 
-    // Reset player spawn position above ground
-    playerPos.current.set(0, 15, 25);
-    cameraYaw.current = Math.PI;
-  }, [getBlockMaterial]);
+    // Calculate safe spawn position on top of the generated landmark structure
+    const spawn = getDefaultSpawnPoint(landmark);
+    const safeGroundY = getGroundHeightAt(spawn.x, spawn.z, spawn.y);
+    playerPos.current.set(spawn.x, Math.max(spawn.y, safeGroundY), spawn.z);
+    playerVelocity.current.set(0, 0, 0);
+    cameraYaw.current = spawn.yaw;
+    cameraPitch.current = spawn.pitch;
+  }, [getBlockMaterial, getGroundHeightAt]);
 
-  // Create Avatar Mesh (3rd person)
+  // Create Avatar Mesh (3rd person) with joint pivots for smooth non-glitching movement
   const createAvatarMesh = useCallback((skin: MinecraftSkin): THREE.Group => {
     const group = new THREE.Group();
     const hex = (col: string) => parseInt(col.replace('#', '0x'), 16);
 
-    // Head
-    const headGeom = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+    // Head Group (pivot at neck y = 1.6)
+    const headGroup = new THREE.Group();
+    headGroup.position.set(0, 1.6, 0);
+
+    const headGeom = new THREE.BoxGeometry(0.7, 0.7, 0.7);
     const headMat = new THREE.MeshStandardMaterial({ color: hex(skin.headColor), roughness: 0.8, flatShading: true });
-    const head = new THREE.Mesh(headGeom, headMat);
-    head.position.y = 1.6;
-    head.castShadow = true;
-    group.add(head);
+    const headMesh = new THREE.Mesh(headGeom, headMat);
+    headMesh.position.set(0, 0.35, 0);
+    headMesh.castShadow = true;
+    headGroup.add(headMesh);
 
     // Eyes
     const eyeGeom = new THREE.BoxGeometry(0.12, 0.08, 0.02);
     const eyeMat = new THREE.MeshBasicMaterial({ color: hex(skin.eyeColor) });
     const leftEye = new THREE.Mesh(eyeGeom, eyeMat);
-    leftEye.position.set(-0.2, 1.6, 0.41);
+    leftEye.position.set(-0.16, 0.35, 0.36);
     const rightEye = new THREE.Mesh(eyeGeom, eyeMat);
-    rightEye.position.set(0.2, 1.6, 0.41);
-    group.add(leftEye, rightEye);
+    rightEye.position.set(0.16, 0.35, 0.36);
+    headGroup.add(leftEye, rightEye);
+    group.add(headGroup);
 
-    // Torso
-    const torsoGeom = new THREE.BoxGeometry(0.8, 0.85, 0.45);
+    // Torso (from y = 0.8 to 1.6, center at 1.2)
+    const torsoGeom = new THREE.BoxGeometry(0.75, 0.8, 0.4);
     const torsoMat = new THREE.MeshStandardMaterial({ color: hex(skin.bodyColor), roughness: 0.8, flatShading: true });
     const torso = new THREE.Mesh(torsoGeom, torsoMat);
-    torso.position.y = 0.85;
+    torso.position.set(0, 1.2, 0);
     torso.castShadow = true;
     group.add(torso);
 
-    // Arms
-    const armGeom = new THREE.BoxGeometry(0.35, 0.8, 0.35);
+    // Left Arm Pivot (shoulder at y = 1.55, x = -0.52)
+    const leftArmGroup = new THREE.Group();
+    leftArmGroup.position.set(-0.52, 1.55, 0);
+    const armGeom = new THREE.BoxGeometry(0.28, 0.75, 0.28);
     const armMat = new THREE.MeshStandardMaterial({ color: hex(skin.armsColor), roughness: 0.8, flatShading: true });
-    const leftArm = new THREE.Mesh(armGeom, armMat);
-    leftArm.position.set(-0.6, 0.85, 0);
-    leftArm.castShadow = true;
+    const leftArmMesh = new THREE.Mesh(armGeom, armMat);
+    leftArmMesh.position.set(0, -0.375, 0);
+    leftArmMesh.castShadow = true;
+    leftArmGroup.add(leftArmMesh);
+    group.add(leftArmGroup);
 
-    const rightArm = new THREE.Mesh(armGeom, armMat);
-    rightArm.position.set(0.6, 0.85, 0);
-    rightArm.castShadow = true;
-    group.add(leftArm, rightArm);
+    // Right Arm Pivot (shoulder at y = 1.55, x = 0.52)
+    const rightArmGroup = new THREE.Group();
+    rightArmGroup.position.set(0.52, 1.55, 0);
+    const rightArmMesh = new THREE.Mesh(armGeom, armMat);
+    rightArmMesh.position.set(0, -0.375, 0);
+    rightArmMesh.castShadow = true;
+    rightArmGroup.add(rightArmMesh);
+    group.add(rightArmGroup);
 
-    // Legs
-    const legGeom = new THREE.BoxGeometry(0.35, 0.85, 0.35);
+    // Left Leg Pivot (hip at y = 0.8, x = -0.19)
+    const leftLegGroup = new THREE.Group();
+    leftLegGroup.position.set(-0.19, 0.8, 0);
+    const legGeom = new THREE.BoxGeometry(0.28, 0.8, 0.28);
     const legMat = new THREE.MeshStandardMaterial({ color: hex(skin.legsColor), roughness: 0.8, flatShading: true });
-    const leftLeg = new THREE.Mesh(legGeom, legMat);
-    leftLeg.position.set(-0.2, 0.42, 0);
-    leftLeg.castShadow = true;
+    const leftLegMesh = new THREE.Mesh(legGeom, legMat);
+    leftLegMesh.position.set(0, -0.4, 0);
+    leftLegMesh.castShadow = true;
+    leftLegGroup.add(leftLegMesh);
+    group.add(leftLegGroup);
 
-    const rightLeg = new THREE.Mesh(legGeom, legMat);
-    rightLeg.position.set(0.2, 0.42, 0);
-    rightLeg.castShadow = true;
-    group.add(leftLeg, rightLeg);
+    // Right Leg Pivot (hip at y = 0.8, x = 0.19)
+    const rightLegGroup = new THREE.Group();
+    rightLegGroup.position.set(0.19, 0.8, 0);
+    const rightLegMesh = new THREE.Mesh(legGeom, legMat);
+    rightLegMesh.position.set(0, -0.4, 0);
+    rightLegMesh.castShadow = true;
+    rightLegGroup.add(rightLegMesh);
+    group.add(rightLegGroup);
 
     // Cape
     let capeMesh: THREE.Mesh | undefined;
     if (skin.hasCape && skin.capeColor) {
-      const capeGeom = new THREE.BoxGeometry(0.7, 1.1, 0.05);
+      const capeGeom = new THREE.BoxGeometry(0.65, 1.0, 0.04);
       const capeMat = new THREE.MeshStandardMaterial({ color: hex(skin.capeColor), roughness: 0.5 });
       capeMesh = new THREE.Mesh(capeGeom, capeMat);
-      capeMesh.position.set(0, 0.8, -0.28);
-      capeMesh.rotation.x = 0.15;
+      capeMesh.position.set(0, 1.1, -0.24);
+      capeMesh.rotation.x = 0.12;
       group.add(capeMesh);
     }
 
     avatarPartsRef.current = {
-      head,
-      leftArm,
-      rightArm,
-      leftLeg,
-      rightLeg,
+      head: headGroup as unknown as THREE.Mesh,
+      leftArm: leftArmGroup as unknown as THREE.Mesh,
+      rightArm: rightArmGroup as unknown as THREE.Mesh,
+      leftLeg: leftLegGroup as unknown as THREE.Mesh,
+      rightLeg: rightLegGroup as unknown as THREE.Mesh,
       cape: capeMesh
     };
 
@@ -852,20 +912,67 @@ export const VoxelWorld: React.FC<VoxelWorldProps> = ({
       // Telemetry benchmark
       const frameData = hardwareOptimizer.recordFrame();
 
-      // Keyboard movement
+      // Unified movement inputs from Keyboard, Mobile Touch Joystick, and Gamepad
+      const keyForward = (keysPressed.current['KeyW'] ? 1 : 0) - (keysPressed.current['KeyS'] ? 1 : 0);
+      const keyStrafe = (keysPressed.current['KeyD'] ? 1 : 0) - (keysPressed.current['KeyA'] ? 1 : 0);
+      
+      const totalForward = Math.max(-1, Math.min(1, keyForward + touchMoveInput.current.forward + gamepadMoveInput.current.forward));
+      const totalStrafe = Math.max(-1, Math.min(1, keyStrafe + touchMoveInput.current.strafe + gamepadMoveInput.current.strafe));
+      const isMoving = Math.abs(totalForward) > 0.05 || Math.abs(totalStrafe) > 0.05;
+
       const moveSpeed = isFlying ? 18 * delta : 8.5 * delta;
-      const forward = (keysPressed.current['KeyW'] ? 1 : 0) - (keysPressed.current['KeyS'] ? 1 : 0);
-      const strafe = (keysPressed.current['KeyD'] ? 1 : 0) - (keysPressed.current['KeyA'] ? 1 : 0);
-      const isMoving = forward !== 0 || strafe !== 0;
 
       if (isMoving) {
         const sinYaw = Math.sin(cameraYaw.current);
         const cosYaw = Math.cos(cameraYaw.current);
 
-        playerPos.current.x += (forward * sinYaw + strafe * cosYaw) * moveSpeed;
-        playerPos.current.z += (forward * cosYaw - strafe * sinYaw) * moveSpeed;
+        const deltaX = (totalForward * sinYaw + totalStrafe * cosYaw) * moveSpeed;
+        const deltaZ = (totalForward * cosYaw - totalStrafe * sinYaw) * moveSpeed;
 
-        if (!isFlying) {
+        if (isFlying) {
+          playerPos.current.x += deltaX;
+          playerPos.current.z += deltaZ;
+        } else {
+          // Horizontal Collision Resolution with Wall Check & 1-Block Auto-Step-Up
+          const nextX = playerPos.current.x + deltaX;
+          const groundAtNextX = getGroundHeightAt(nextX, playerPos.current.z, playerPos.current.y);
+          const heightDiffX = groundAtNextX - playerPos.current.y;
+
+          // Check if obstacle is walkable step (<= 1.15 blocks) or air
+          if (heightDiffX <= 1.15) {
+            const checkXBlock = Math.round(nextX + Math.sign(deltaX) * 0.25);
+            const checkZBlock = Math.round(playerPos.current.z);
+            const checkTorsoY = Math.round(playerPos.current.y + 0.3);
+            const isTorsoBlockedX = blocksMapRef.current.has(`${checkXBlock},${checkTorsoY},${checkZBlock}`);
+
+            if (!isTorsoBlockedX) {
+              playerPos.current.x = nextX;
+              if (heightDiffX > 0 && Math.abs(playerVelocity.current.y) < 2) {
+                // Smooth step-up onto block
+                playerPos.current.y = Math.max(playerPos.current.y, groundAtNextX);
+              }
+            }
+          }
+
+          const nextZ = playerPos.current.z + deltaZ;
+          const groundAtNextZ = getGroundHeightAt(playerPos.current.x, nextZ, playerPos.current.y);
+          const heightDiffZ = groundAtNextZ - playerPos.current.y;
+
+          if (heightDiffZ <= 1.15) {
+            const checkXBlock = Math.round(playerPos.current.x);
+            const checkZBlock = Math.round(nextZ + Math.sign(deltaZ) * 0.25);
+            const checkTorsoY = Math.round(playerPos.current.y + 0.3);
+            const isTorsoBlockedZ = blocksMapRef.current.has(`${checkXBlock},${checkTorsoY},${checkZBlock}`);
+
+            if (!isTorsoBlockedZ) {
+              playerPos.current.z = nextZ;
+              if (heightDiffZ > 0 && Math.abs(playerVelocity.current.y) < 2) {
+                // Smooth step-up onto block
+                playerPos.current.y = Math.max(playerPos.current.y, groundAtNextZ);
+              }
+            }
+          }
+
           walkCycle += delta * 12;
           if (Math.sin(walkCycle) > 0.95 && Math.sin(walkCycle - delta * 12) <= 0.95) {
             soundEngine.playStep('grass');
@@ -873,23 +980,46 @@ export const VoxelWorld: React.FC<VoxelWorldProps> = ({
         }
       }
 
-      // Vertical movement & flying
+      // Vertical movement, Gravity & Ground Floor Resolution
+      const currentGroundY = getGroundHeightAt(playerPos.current.x, playerPos.current.z, playerPos.current.y);
+
       if (isFlying) {
-        if (keysPressed.current['Space']) playerPos.current.y += moveSpeed;
+        if (keysPressed.current['Space'] || jumpRequested.current) playerPos.current.y += moveSpeed;
         if (keysPressed.current['ShiftLeft'] || keysPressed.current['KeyC']) playerPos.current.y -= moveSpeed;
-        playerPos.current.y = Math.max(1, playerPos.current.y);
+        playerPos.current.y = Math.max(currentGroundY, playerPos.current.y);
       } else {
-        if (keysPressed.current['Space'] && playerPos.current.y <= 1.05) {
+        const isOnGround = playerPos.current.y <= currentGroundY + 0.08 && playerVelocity.current.y <= 0.1;
+
+        if ((keysPressed.current['Space'] || jumpRequested.current) && isOnGround) {
           playerVelocity.current.y = 8.5;
+          jumpRequested.current = false;
           soundEngine.playJump();
         }
-        playerVelocity.current.y -= 22 * delta; // Gravity
+
+        // Apply Gravity
+        playerVelocity.current.y -= 24 * delta;
         playerPos.current.y += playerVelocity.current.y * delta;
-        if (playerPos.current.y <= 1.0) {
-          playerPos.current.y = 1.0;
+
+        // Ground collision & landing
+        if (playerPos.current.y <= currentGroundY) {
+          playerPos.current.y = currentGroundY;
           playerVelocity.current.y = 0;
         }
+
+        // Auto-respawning if fallen into the void / below ground
+        if (playerPos.current.y < -25) {
+          const safeSpawn = getDefaultSpawnPoint(currentLandmark);
+          const safeGround = getGroundHeightAt(safeSpawn.x, safeSpawn.z, safeSpawn.y);
+          playerPos.current.set(safeSpawn.x, Math.max(safeSpawn.y, safeGround), safeSpawn.z);
+          playerVelocity.current.set(0, 0, 0);
+          cameraYaw.current = safeSpawn.yaw;
+          cameraPitch.current = safeSpawn.pitch;
+          soundEngine.playTeleport();
+        }
       }
+
+      // Reset one-frame jump request if not consumed
+      jumpRequested.current = false;
 
       // Camera Perspective Rig
       const is3rdPerson = cameraMode !== 'first_person';
@@ -907,10 +1037,11 @@ export const VoxelWorld: React.FC<VoxelWorldProps> = ({
         camera.lookAt(playerPos.current.x, playerPos.current.y + 1.2, playerPos.current.z);
 
         if (avatarMeshRef.current) {
-          avatarMeshRef.current.position.set(playerPos.current.x, playerPos.current.y, playerPos.current.z);
+          // Align avatar feet with ground level
+          avatarMeshRef.current.position.set(playerPos.current.x, playerPos.current.y - 1.0, playerPos.current.z);
           avatarMeshRef.current.rotation.y = cameraYaw.current;
 
-          // Limb animations
+          // Limb animations from joint pivots
           if (avatarPartsRef.current) {
             const legSwing = Math.sin(walkCycle) * 0.6;
             avatarPartsRef.current.leftLeg.rotation.x = isMoving ? legSwing : 0;
@@ -930,10 +1061,10 @@ export const VoxelWorld: React.FC<VoxelWorldProps> = ({
         camera.lookAt(playerPos.current.x, playerPos.current.y + 1.3, playerPos.current.z);
 
         if (avatarMeshRef.current) {
-          avatarMeshRef.current.position.set(playerPos.current.x, playerPos.current.y, playerPos.current.z);
+          avatarMeshRef.current.position.set(playerPos.current.x, playerPos.current.y - 1.0, playerPos.current.z);
           avatarMeshRef.current.rotation.y = cameraYaw.current;
 
-          // Limb animations
+          // Limb animations from joint pivots
           if (avatarPartsRef.current) {
             const legSwing = Math.sin(walkCycle) * 0.6;
             avatarPartsRef.current.leftLeg.rotation.x = isMoving ? legSwing : 0;
@@ -1186,12 +1317,7 @@ export const VoxelWorld: React.FC<VoxelWorldProps> = ({
 
   // Mobile Touch Movement Handler
   const handleTouchMove = (forward: number, strafe: number) => {
-    const moveSpeed = 0.18;
-    const sinYaw = Math.sin(cameraYaw.current);
-    const cosYaw = Math.cos(cameraYaw.current);
-
-    playerPos.current.x += (forward * sinYaw + strafe * cosYaw) * moveSpeed;
-    playerPos.current.z += (forward * cosYaw - strafe * sinYaw) * moveSpeed;
+    touchMoveInput.current = { forward, strafe };
   };
 
   const handleTouchLook = (deltaYaw: number, deltaPitch: number) => {
@@ -1200,12 +1326,7 @@ export const VoxelWorld: React.FC<VoxelWorldProps> = ({
   };
 
   const handleTouchJump = () => {
-    if (isFlying) {
-      playerPos.current.y += 1.5;
-    } else if (playerPos.current.y <= 1.05) {
-      playerVelocity.current.y = 8.5;
-      soundEngine.playJump();
-    }
+    jumpRequested.current = true;
   };
 
   const handleTouchBreakBlock = () => {
