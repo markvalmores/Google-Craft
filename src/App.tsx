@@ -111,11 +111,6 @@ export default function App() {
     soundEngine.playLevelUp();
   };
 
-  const handleSkipOpeningTrailer = () => {
-    setIsOpeningTrailer(false);
-    soundEngine.playClick();
-  };
-
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-stone-950 font-sans select-none" id="google-craft-root">
       {/* IN-GAME VIEW */}
@@ -237,13 +232,12 @@ export default function App() {
             </button>
           </div>
 
-          {/* 21-Second Opening Cinematic Trailer (when starting game) */}
+          {/* 15-Second World Mesh Loading Intro (Stacking all 5 graphic layers before entering gameplay) */}
           {isOpeningTrailer && (
             <OpeningTrailer21s
               currentLandmark={currentLandmark}
               server={currentServer}
               onComplete={handleOpeningTrailerComplete}
-              onSkip={handleSkipOpeningTrailer}
             />
           )}
         </div>

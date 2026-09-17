@@ -243,18 +243,71 @@ interface OpeningTrailerProps {
   currentLandmark: Landmark;
   server: GameServer;
   onComplete: () => void;
-  onSkip: () => void;
 }
 
 export const OpeningTrailer21s: React.FC<OpeningTrailerProps> = ({
   currentLandmark,
   server,
   onComplete,
-  onSkip
 }) => {
-  const [secondsRemaining, setSecondsRemaining] = useState(21);
-  const [phaseText, setPhaseText] = useState('LOCKING SATELLITE GRID...');
-  const DURATION = 21;
+  const [secondsRemaining, setSecondsRemaining] = useState(15);
+  const [activeLayer, setActiveLayer] = useState(1);
+  const [blocksStacked, setBlocksStacked] = useState(0);
+  const [phaseStatus, setPhaseStatus] = useState('INITIALIZING SATELLITE TELEMETRY & STRATUM LAYERS...');
+  const DURATION = 15;
+
+  const MESH_LAYERS = [
+    {
+      id: 1,
+      name: 'LAYER 1: BEDROCK & FOUNDATION STRATUM',
+      range: 'y = -1 to 0',
+      description: 'Solid bedrock sub-base, subterranean support matrix, and impervious baseline mesh',
+      blocks: 1024,
+      icon: '🪨',
+      color: 'text-stone-400',
+      bgColor: 'bg-stone-700',
+    },
+    {
+      id: 2,
+      name: 'LAYER 2: SATELLITE TERRAIN & BIOME PLAZAS',
+      range: 'y = 0 to 2',
+      description: 'Google Maps elevation topology, pedestrian promenades, river channels, and roads',
+      blocks: 2048,
+      icon: '🌿',
+      color: 'text-emerald-400',
+      bgColor: 'bg-emerald-600',
+    },
+    {
+      id: 3,
+      name: 'LAYER 3: LOAD-BEARING ARCHITECTURE & COLUMNS',
+      range: 'y = 2 to 14',
+      description: 'Primary structural framing, archways, reinforced stone pillars, and monument core',
+      blocks: 3200,
+      icon: '🏛️',
+      color: 'text-amber-400',
+      bgColor: 'bg-amber-600',
+    },
+    {
+      id: 4,
+      name: 'LAYER 4: UPPER ELEVATIONS, SPIRES & ROOF ART',
+      range: 'y = 15 to 45',
+      description: 'Tiered cantilever decks, towers, gothic cornices, cupolas, and aerial pinnacles',
+      blocks: 4120,
+      icon: '🗼',
+      color: 'text-cyan-400',
+      bgColor: 'bg-cyan-600',
+    },
+    {
+      id: 5,
+      name: 'LAYER 5: EMISSIVE ART, LIGHTING & SHADER MESH',
+      range: 'All Levels',
+      description: 'Dynamic redstone lamps, stained glass, glowing gold accents, and atmospheric shaders',
+      blocks: 4890,
+      icon: '✨',
+      color: 'text-purple-400',
+      bgColor: 'bg-purple-600',
+    },
+  ];
 
   useEffect(() => {
     soundEngine.playCinematicBooms();
@@ -264,22 +317,39 @@ export const OpeningTrailer21s: React.FC<OpeningTrailerProps> = ({
       setSecondsRemaining(prev => {
         if (prev <= 1) {
           clearInterval(interval);
+          soundEngine.playLevelUp();
           onComplete();
           return 0;
         }
 
         const next = prev - 1;
-        // Phase changes
-        if (next > 16) {
-          setPhaseText('PHASE 1: PROXIMITY MATCHMAKING TO 34 SERVERS...');
-        } else if (next > 11) {
-          setPhaseText(`PHASE 2: DOWNLOADING GOOGLE MAPS SATELLITE TELEMETRY [${currentLandmark.name}]...`);
-        } else if (next > 6) {
-          setPhaseText('PHASE 3: VOXELIZING REAL-WORLD ELEVATION & ARCHITECTURE...');
+        const progress = (DURATION - next) / DURATION;
+        
+        // Calculate current active layer based on progression (1 to 5)
+        const currentLayerIdx = Math.min(5, Math.max(1, Math.ceil(progress * 5)));
+        setActiveLayer(currentLayerIdx);
+
+        // Sound effect on layer stacking
+        if (currentLayerIdx === 1) {
           soundEngine.playBlockPlace('stone');
+          setPhaseStatus('STACKING LAYER 1: Geological Bedrock & Subterranean Foundation...');
+        } else if (currentLayerIdx === 2) {
+          soundEngine.playBlockPlace('grass');
+          setPhaseStatus(`STACKING LAYER 2: Satellite Elevation [${currentLandmark.name}] & Plaza Ground...`);
+        } else if (currentLayerIdx === 3) {
+          soundEngine.playBlockPlace('stone');
+          setPhaseStatus('STACKING LAYER 3: Monument Core Columns & Heavy Structural Framing...');
+        } else if (currentLayerIdx === 4) {
+          soundEngine.playBlockPlace('diamond');
+          setPhaseStatus('STACKING LAYER 4: High-Altitude Spires, Roofs & Observation Platforms...');
         } else {
-          setPhaseText('PHASE 4: AVATAR DEPLOYMENT & LOW-LATENCY TICK HANDSHAKE...');
+          soundEngine.playBlockPlace('gold');
+          setPhaseStatus('STACKING LAYER 5: Dynamic Emissive Lighting, Shader Maps & Final Voxel Bake...');
         }
+
+        // Animated block counter
+        const targetBlocks = MESH_LAYERS[currentLayerIdx - 1]?.blocks || 4890;
+        setBlocksStacked(Math.round(progress * targetBlocks));
 
         return next;
       });
@@ -289,69 +359,121 @@ export const OpeningTrailer21s: React.FC<OpeningTrailerProps> = ({
   }, [currentLandmark, onComplete]);
 
   const elapsed = DURATION - secondsRemaining;
-  const progressPercent = (elapsed / DURATION) * 100;
+  const progressPercent = Math.min(100, Math.round((elapsed / DURATION) * 100));
 
   return (
-    <div className="fixed inset-0 z-50 bg-stone-950 flex flex-col items-center justify-center p-6 select-none overflow-hidden" id="opening-trailer-modal">
-      {/* Background Animated Warp Grid */}
-      <div className="absolute inset-0 bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:24px_24px] opacity-25 animate-pulse" />
+    <div className="fixed inset-0 z-50 bg-stone-950 flex flex-col items-center justify-center p-4 md:p-8 select-none overflow-y-auto" id="opening-trailer-modal">
+      {/* Background Animated Warp Matrix Grid */}
+      <div className="absolute inset-0 bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:24px_24px] opacity-20 pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-transparent to-black/90 pointer-events-none" />
 
-      {/* Top Bar with Skip */}
-      <div className="absolute top-6 right-6 z-20">
-        <button
-          onClick={() => {
-            soundEngine.playClick();
-            onSkip();
-          }}
-          className="mc-btn px-4 py-2 text-xs font-minecraft text-amber-300 hover:text-white cursor-pointer"
-          id="btn-skip-opening-trailer"
-        >
-          SKIP INTRO [ESC] ➔
-        </button>
-      </div>
-
-      {/* Main Cinematic Visual Stage */}
-      <div className="relative z-10 max-w-2xl w-full text-center space-y-6">
-        {/* Flag & Target Landmark */}
-        <div className="inline-flex items-center gap-3 px-4 py-2 bg-stone-900/90 border-2 border-stone-700 rounded shadow-xl">
-          <span className="text-3xl">{currentLandmark.flag}</span>
+      {/* Main Cinematic Mesh Loading Stage */}
+      <div className="relative z-10 max-w-3xl w-full text-center space-y-5 my-auto">
+        {/* Top Header & Landmark Metadata */}
+        <div className="inline-flex items-center gap-3 px-5 py-2.5 bg-stone-900/90 border-2 border-stone-700 rounded-lg shadow-2xl backdrop-blur-md">
+          <span className="text-3xl animate-bounce">{currentLandmark.flag}</span>
           <div className="text-left">
-            <div className="text-xs font-minecraft text-amber-400">{currentLandmark.name}</div>
-            <div className="text-xs font-pixel text-stone-400">
+            <div className="text-sm font-minecraft text-amber-400 font-bold flex items-center gap-2">
+              <span>{currentLandmark.name}</span>
+              <span className="text-[10px] px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded border border-amber-500/40">
+                {currentLandmark.category}
+              </span>
+            </div>
+            <div className="text-xs font-pixel text-stone-300">
               {currentLandmark.lat.toFixed(4)}°N, {currentLandmark.lng.toFixed(4)}°E • {currentLandmark.location}
             </div>
           </div>
         </div>
 
-        {/* Big Countdown */}
+        {/* Big Countdown & Live Status Title */}
         <div className="relative flex flex-col items-center">
-          <div className="text-6xl md:text-8xl font-minecraft text-amber-400 mc-title-shadow tracking-tighter">
-            {secondsRemaining}s
+          <div className="text-5xl md:text-7xl font-minecraft text-amber-400 mc-title-shadow tracking-tighter">
+            {progressPercent}%
           </div>
-          <div className="text-xs font-minecraft text-stone-400 mt-2 uppercase tracking-widest">
-            ENTERING GOOGLE CRAFT
+          <div className="text-xs font-minecraft text-emerald-400 mt-1 uppercase tracking-widest flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span>BUILDING WORLD MESH & STACKING GRAPHIC LAYERS ({secondsRemaining}s)</span>
           </div>
+          <p className="text-xs font-pixel text-stone-400 max-w-lg mt-1">
+            Synthesizing high-precision voxel topology directly onto Google Maps 1:1 coordinates before entering gameplay.
+          </p>
         </div>
 
-        {/* Phase Indicator */}
-        <div className="bg-stone-900 border border-stone-700 p-4 rounded text-left space-y-2">
-          <div className="text-xs font-minecraft text-emerald-400 flex items-center justify-between">
-            <span>{phaseText}</span>
-            <span className="text-stone-400 text-[10px]">{Math.round(progressPercent)}%</span>
+        {/* 5-Layer Stacking Architecture Diagram */}
+        <div className="bg-stone-900/95 border-2 border-stone-700 p-4 rounded-xl shadow-2xl text-left space-y-3 backdrop-blur-md">
+          <div className="flex items-center justify-between text-xs font-minecraft border-b border-stone-800 pb-2">
+            <span className="text-amber-400">STACKED MESH ARCHITECTURE PIPELINE</span>
+            <span className="text-stone-400 font-pixel">
+              VOXELS LOADED: <strong className="text-amber-300">{blocksStacked.toLocaleString()}</strong> / 4,890+
+            </span>
           </div>
 
-          <div className="w-full bg-stone-850 h-3 border border-stone-700 rounded overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-emerald-500 to-amber-400 transition-all duration-500"
-              style={{ width: `${progressPercent}%` }}
-            />
+          {/* 5 Stacked Graphic Layers Display */}
+          <div className="space-y-2">
+            {MESH_LAYERS.map((layer) => {
+              const isLoaded = activeLayer > layer.id;
+              const isCurrent = activeLayer === layer.id;
+              
+              return (
+                <div
+                  key={layer.id}
+                  className={`p-2.5 rounded-lg border transition-all flex items-center justify-between gap-3 ${
+                    isCurrent
+                      ? 'border-amber-400 bg-amber-950/40 shadow-[0_0_15px_rgba(251,191,36,0.2)]'
+                      : isLoaded
+                      ? 'border-emerald-700/60 bg-emerald-950/20'
+                      : 'border-stone-800 bg-stone-900/40 opacity-40'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl">{layer.icon}</span>
+                    <div>
+                      <div className="text-xs font-minecraft flex items-center gap-2">
+                        <span className={layer.color}>{layer.name}</span>
+                        <span className="text-[10px] text-stone-500 font-pixel">[{layer.range}]</span>
+                      </div>
+                      <div className="text-[11px] font-pixel text-stone-300">
+                        {layer.description}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-right shrink-0">
+                    <span className="text-[11px] font-minecraft">
+                      {isLoaded ? (
+                        <span className="text-emerald-400">✓ STACKED</span>
+                      ) : isCurrent ? (
+                        <span className="text-amber-400 animate-pulse">⚙️ COMPILING...</span>
+                      ) : (
+                        <span className="text-stone-500">QUEUED</span>
+                      )}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
-          {/* Real-time server ping telemetry */}
-          <div className="flex items-center justify-between text-[11px] font-pixel text-stone-400 pt-1">
-            <span>Assigned Node: <strong className="text-amber-300">{server.name}</strong></span>
-            <span>Target Latency: <strong className="text-emerald-400">{server.pingMs}ms</strong></span>
-            <span>Server Net: 34 Active</span>
+          {/* Real-time Global Mesh Progress Bar */}
+          <div className="pt-2 space-y-1.5">
+            <div className="flex items-center justify-between text-xs font-minecraft">
+              <span className="text-stone-300 text-[11px]">{phaseStatus}</span>
+              <span className="text-emerald-400 font-bold">{progressPercent}%</span>
+            </div>
+            <div className="w-full bg-stone-950 h-3 border border-stone-700 rounded-full overflow-hidden p-0.5">
+              <div
+                className="h-full bg-gradient-to-r from-emerald-500 via-amber-400 to-yellow-300 rounded-full transition-all duration-300 shadow-[0_0_10px_rgba(251,191,36,0.5)]"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Network and Node Telemetry */}
+          <div className="flex flex-wrap items-center justify-between text-[11px] font-pixel text-stone-400 pt-2 border-t border-stone-800">
+            <span>Mesh Server Node: <strong className="text-amber-300">{server.name}</strong></span>
+            <span>Target Tick Latency: <strong className="text-emerald-400">{server.pingMs}ms</strong></span>
+            <span>Draw Calls: <strong className="text-cyan-300">Batched (Zero Lag)</strong></span>
+            <span>Physics Engine: <strong className="text-purple-300">3D Voxel Raycaster</strong></span>
           </div>
         </div>
       </div>

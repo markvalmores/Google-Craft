@@ -36,22 +36,16 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
   const joystickBaseRef = useRef<HTMLDivElement>(null);
   const [joystickActive, setJoystickActive] = useState(false);
   const [knobPos, setKnobPos] = useState({ x: 0, y: 0 });
-  const touchIdRef = useRef<number | null>(null);
+  const [isSprinting, setIsSprinting] = useState(false);
+  
+  // Dedicated multi-touch IDs to completely prevent conflict between Movement and Camera Look
+  const moveTouchIdRef = useRef<number | null>(null);
   const lookTouchIdRef = useRef<number | null>(null);
   const lastLookPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isMiningTouch, setIsMiningTouch] = useState(false);
   const mineIntervalRef = useRef<number | null>(null);
 
-  // Joystick touch handlers
-  const handleJoystickTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    if (touchIdRef.current !== null) return;
-    const touch = e.changedTouches[0];
-    touchIdRef.current = touch.identifier;
-    setJoystickActive(true);
-    updateJoystick(touch.clientX, touch.clientY);
-  };
-
+  // Smooth virtual analog joystick calculation
   const updateJoystick = useCallback((clientX: number, clientY: number) => {
     if (!joystickBaseRef.current) return;
     const rect = joystickBaseRef.current.getBoundingClientRect();
@@ -61,7 +55,7 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
     const dx = clientX - centerX;
     const dy = clientY - centerY;
     const dist = Math.hypot(dx, dy);
-    const maxRadius = rect.width / 2 - 10;
+    const maxRadius = (rect.width / 2) - 6;
 
     let clampedX = dx;
     let clampedY = dy;
@@ -72,19 +66,42 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
 
     setKnobPos({ x: clampedX, y: clampedY });
 
-    // Normalized move inputs (-1 to 1)
-    const normX = clampedX / maxRadius;
-    const normY = clampedY / maxRadius;
+    // Normalized move inputs (-1.0 to 1.0) with slight deadzone
+    const rawNormX = clampedX / maxRadius;
+    const rawNormY = clampedY / maxRadius;
+    const normDist = Math.hypot(rawNormX, rawNormY);
 
-    // dy < 0 means forward, dx > 0 means strafe right
-    onMove(-normY, normX);
+    if (normDist < 0.08) {
+      onMove(0, 0);
+      setIsSprinting(false);
+    } else {
+      // dy < 0 is forward, dx > 0 is strafe right
+      const forward = -rawNormY;
+      const strafe = rawNormX;
+      setIsSprinting(normDist > 0.85);
+      onMove(forward, strafe);
+    }
   }, [onMove]);
+
+  // Movement Joystick Touch Handlers
+  const handleJoystickTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (moveTouchIdRef.current !== null) return;
+    
+    // Pick the touch on the joystick base
+    const touch = e.changedTouches[0];
+    moveTouchIdRef.current = touch.identifier;
+    setJoystickActive(true);
+    updateJoystick(touch.clientX, touch.clientY);
+  };
 
   const handleJoystickTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
     e.preventDefault();
+    e.stopPropagation();
     for (let i = 0; i < e.changedTouches.length; i++) {
       const touch = e.changedTouches[i];
-      if (touch.identifier === touchIdRef.current) {
+      if (touch.identifier === moveTouchIdRef.current) {
         updateJoystick(touch.clientX, touch.clientY);
         break;
       }
@@ -92,10 +109,13 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
   };
 
   const handleJoystickTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
     for (let i = 0; i < e.changedTouches.length; i++) {
-      if (e.changedTouches[i].identifier === touchIdRef.current) {
-        touchIdRef.current = null;
+      if (e.changedTouches[i].identifier === moveTouchIdRef.current) {
+        moveTouchIdRef.current = null;
         setJoystickActive(false);
+        setIsSprinting(false);
         setKnobPos({ x: 0, y: 0 });
         onMove(0, 0);
         break;
@@ -103,15 +123,18 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
     }
   };
 
-  // Right-screen Look Touch Handlers
+  // Dedicated Right-Screen Camera Look Handlers (No auto-snap, zero conflict with movement)
   const handleLookTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    e.stopPropagation();
     if (lookTouchIdRef.current !== null) return;
+    
     const touch = e.changedTouches[0];
     lookTouchIdRef.current = touch.identifier;
     lastLookPos.current = { x: touch.clientX, y: touch.clientY };
   };
 
   const handleLookTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    e.stopPropagation();
     for (let i = 0; i < e.changedTouches.length; i++) {
       const touch = e.changedTouches[i];
       if (touch.identifier === lookTouchIdRef.current) {
@@ -119,7 +142,8 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
         const dy = touch.clientY - lastLookPos.current.y;
         lastLookPos.current = { x: touch.clientX, y: touch.clientY };
 
-        const sensitivity = 0.005;
+        // Silky smooth camera sensitivity without snap-back
+        const sensitivity = 0.0042;
         onLook(dx * sensitivity, dy * sensitivity);
         break;
       }
@@ -127,6 +151,7 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
   };
 
   const handleLookTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    e.stopPropagation();
     for (let i = 0; i < e.changedTouches.length; i++) {
       if (e.changedTouches[i].identifier === lookTouchIdRef.current) {
         lookTouchIdRef.current = null;
@@ -145,7 +170,7 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
     if (mineIntervalRef.current) clearInterval(mineIntervalRef.current);
     mineIntervalRef.current = window.setInterval(() => {
       onBreakBlock();
-    }, 250);
+    }, 220);
   };
 
   const stopMining = () => {
@@ -164,9 +189,9 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
 
   return (
     <div className="absolute inset-0 pointer-events-none z-30 select-none overflow-hidden" id="mobile-touch-root">
-      {/* Right screen touch surface for Camera Look panning */}
+      {/* Right and Upper Screen Touch Surface for Camera Look Panning */}
       <div
-        className="absolute top-16 right-0 w-1/2 bottom-28 pointer-events-auto touch-none"
+        className="absolute top-12 right-0 w-[60vw] bottom-28 pointer-events-auto touch-none"
         onTouchStart={handleLookTouchStart}
         onTouchMove={handleLookTouchMove}
         onTouchEnd={handleLookTouchEnd}
@@ -174,39 +199,72 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
         id="touch-look-surface"
       />
 
-      {/* Bottom Left Virtual Analog Joystick */}
-      <div className="absolute bottom-6 left-6 pointer-events-auto touch-none flex flex-col items-center" id="mobile-joystick-dock">
+      {/* Top Left Screen Area for Look Panning when not touching Joystick */}
+      <div
+        className="absolute top-12 left-0 w-[40vw] h-[40vh] pointer-events-auto touch-none"
+        onTouchStart={handleLookTouchStart}
+        onTouchMove={handleLookTouchMove}
+        onTouchEnd={handleLookTouchEnd}
+        onTouchCancel={handleLookTouchEnd}
+        id="touch-look-surface-topleft"
+      />
+
+      {/* Bottom Left Virtual Analog Joystick Dock */}
+      <div className="absolute bottom-5 left-5 pointer-events-auto touch-none flex flex-col items-center" id="mobile-joystick-dock">
         <div
           ref={joystickBaseRef}
           onTouchStart={handleJoystickTouchStart}
           onTouchMove={handleJoystickTouchMove}
           onTouchEnd={handleJoystickTouchEnd}
           onTouchCancel={handleJoystickTouchEnd}
-          className={`relative w-28 h-28 rounded-full border-2 bg-stone-900/60 backdrop-blur-sm transition-colors flex items-center justify-center ${
-            joystickActive ? 'border-amber-400 bg-stone-900/80 shadow-[0_0_15px_rgba(251,191,36,0.3)]' : 'border-stone-600/80'
+          className={`relative w-32 h-32 rounded-full border-2 bg-stone-950/70 backdrop-blur-md transition-all flex items-center justify-center ${
+            joystickActive
+              ? 'border-amber-400 bg-stone-950/85 shadow-[0_0_20px_rgba(251,191,36,0.35)]'
+              : 'border-stone-600/90 shadow-2xl'
           }`}
           id="virtual-joystick-base"
         >
-          {/* D-Pad cross markings */}
-          <div className="absolute w-full h-0.5 bg-stone-700/50 pointer-events-none" />
-          <div className="absolute h-full w-0.5 bg-stone-700/50 pointer-events-none" />
+          {/* Outer Ring & Directional Guides */}
+          <div className="absolute inset-2 rounded-full border border-dashed border-stone-600/50 pointer-events-none" />
+          
+          {/* Directional Arrows */}
+          <span className="absolute top-1.5 text-[10px] text-stone-400 font-minecraft pointer-events-none">▲</span>
+          <span className="absolute bottom-1.5 text-[10px] text-stone-400 font-minecraft pointer-events-none">▼</span>
+          <span className="absolute left-1.5 text-[10px] text-stone-400 font-minecraft pointer-events-none">◄</span>
+          <span className="absolute right-1.5 text-[10px] text-stone-400 font-minecraft pointer-events-none">►</span>
 
-          {/* Movable Knob */}
+          {/* Center neutral deadzone ring */}
+          <div className="w-6 h-6 rounded-full border border-stone-700/60 pointer-events-none" />
+
+          {/* Movable Smooth Analog Knob */}
           <div
-            className="w-12 h-12 rounded-full bg-gradient-to-b from-stone-600 to-stone-800 border-2 border-amber-400/90 shadow-lg flex items-center justify-center text-xs font-minecraft text-white pointer-events-none transform transition-transform duration-75"
+            className={`absolute w-14 h-14 rounded-full border-2 flex items-center justify-center shadow-2xl pointer-events-none transition-shadow ${
+              isSprinting
+                ? 'bg-gradient-to-b from-amber-500 to-amber-700 border-yellow-200 shadow-[0_0_15px_rgba(251,191,36,0.6)] text-stone-950 font-bold'
+                : joystickActive
+                ? 'bg-gradient-to-b from-stone-600 to-stone-800 border-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.4)] text-white'
+                : 'bg-gradient-to-b from-stone-700 to-stone-900 border-stone-500 text-stone-300'
+            }`}
             style={{
-              transform: `translate(${knobPos.x}px, ${knobPos.y}px)`
+              transform: `translate(${knobPos.x}px, ${knobPos.y}px)`,
+              transition: joystickActive ? 'none' : 'transform 0.15s cubic-bezier(0.18, 0.89, 0.32, 1.28)'
             }}
             id="virtual-joystick-knob"
           >
-            🕹️
+            <span className="text-xs font-minecraft select-none">{isSprinting ? '⚡' : '🕹️'}</span>
           </div>
         </div>
-        <span className="text-[10px] font-pixel text-stone-400 mt-1">MOVE & STRAFE</span>
+        <div className="flex items-center gap-1.5 mt-1">
+          <span className={`text-[9px] font-minecraft uppercase tracking-wider px-1.5 py-0.5 rounded ${
+            isSprinting ? 'bg-amber-500/80 text-stone-950 font-bold' : 'text-stone-400'
+          }`}>
+            {isSprinting ? 'SPRINT' : 'WALK / STRAFE'}
+          </span>
+        </div>
       </div>
 
-      {/* Bottom Right Mobile Action Buttons */}
-      <div className="absolute bottom-6 right-6 pointer-events-auto flex items-end gap-3" id="mobile-actions-dock">
+      {/* Bottom Right Mobile Action Buttons Dock */}
+      <div className="absolute bottom-5 right-5 pointer-events-auto flex items-end gap-2.5" id="mobile-actions-dock">
         {/* Secondary Actions Column */}
         <div className="flex flex-col gap-2">
           {/* Fly Toggle */}
@@ -218,8 +276,8 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
             }}
             className={`w-11 h-11 rounded-lg border-2 flex items-center justify-center text-sm font-minecraft shadow-lg active:scale-95 transition-transform ${
               isFlying
-                ? 'bg-amber-500/90 border-amber-300 text-stone-950 font-bold'
-                : 'bg-stone-900/80 border-stone-600 text-stone-200'
+                ? 'bg-amber-500 border-amber-300 text-stone-950 font-bold'
+                : 'bg-stone-900/90 border-stone-600 text-stone-200'
             }`}
             title="Toggle Fly"
             id="mobile-btn-fly"
@@ -237,7 +295,7 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
             className={`w-11 h-11 rounded-lg border-2 flex flex-col items-center justify-center text-xs shadow-lg active:scale-95 transition-all ${
               cameraMode !== 'first_person'
                 ? 'bg-purple-900/90 border-purple-400 text-purple-200'
-                : 'bg-stone-900/80 border-stone-600 text-stone-200'
+                : 'bg-stone-900/90 border-stone-600 text-stone-200'
             }`}
             title="Toggle Perspective (1st / 3rd Back / 3rd Front)"
             id="mobile-btn-camera"
@@ -249,7 +307,7 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
           </button>
         </div>
 
-        {/* Primary Action Controls (Break, Place, Jump) */}
+        {/* Primary Action Controls (Break, Place, Sneak, Jump) */}
         <div className="grid grid-cols-2 gap-2">
           {/* Mine / Break Block Button */}
           <button
@@ -268,7 +326,7 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
             className={`w-14 h-14 rounded-xl border-2 flex flex-col items-center justify-center shadow-xl active:scale-90 transition-all ${
               isMiningTouch
                 ? 'bg-rose-600 border-rose-300 text-white scale-95 shadow-[0_0_15px_rgba(225,29,72,0.6)]'
-                : 'bg-rose-950/80 border-rose-700 text-rose-200 hover:bg-rose-900/80'
+                : 'bg-rose-950/90 border-rose-700 text-rose-200 hover:bg-rose-900/90'
             }`}
             id="mobile-btn-break"
           >
@@ -283,7 +341,7 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
               if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(15);
               onPlaceBlock();
             }}
-            className="w-14 h-14 rounded-xl border-2 border-emerald-600 bg-emerald-950/80 text-emerald-200 flex flex-col items-center justify-center shadow-xl active:scale-90 hover:bg-emerald-900/80 transition-all"
+            className="w-14 h-14 rounded-xl border-2 border-emerald-600 bg-emerald-950/90 text-emerald-200 flex flex-col items-center justify-center shadow-xl active:scale-90 hover:bg-emerald-900/90 transition-all"
             id="mobile-btn-place"
           >
             <span className="text-lg">🧱</span>
@@ -300,7 +358,7 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
               e.preventDefault();
               onCrouch(false);
             }}
-            className="w-14 h-12 rounded-xl border-2 border-stone-600 bg-stone-900/80 text-stone-200 flex items-center justify-center text-xs font-minecraft shadow-lg active:scale-95"
+            className="w-14 h-12 rounded-xl border-2 border-stone-600 bg-stone-900/90 text-stone-200 flex items-center justify-center text-xs font-minecraft shadow-lg active:scale-95"
             id="mobile-btn-crouch"
           >
             ⬇️ SNEAK
@@ -313,7 +371,7 @@ export const MobileTouchControls: React.FC<MobileTouchControlsProps> = ({
               if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(15);
               onJump();
             }}
-            className="w-14 h-12 rounded-xl border-2 border-cyan-500 bg-cyan-950/80 text-cyan-200 flex items-center justify-center text-xs font-minecraft font-bold shadow-lg active:scale-95"
+            className="w-14 h-12 rounded-xl border-2 border-cyan-500 bg-cyan-950/90 text-cyan-200 flex items-center justify-center text-xs font-minecraft font-bold shadow-lg active:scale-95"
             id="mobile-btn-jump"
           >
             ⬆️ JUMP
