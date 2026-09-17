@@ -12,6 +12,7 @@ import { PerformanceModal } from './components/PerformanceModal';
 import { WeatherModal } from './components/WeatherModal';
 import { LocationOccasionPrompt } from './components/LocationOccasionPrompt';
 import { DeveloperCreditsModal } from './components/DeveloperCreditsModal';
+import { DownloadGameModal } from './components/DownloadGameModal';
 import { FAMOUS_LANDMARKS, Landmark } from './services/googleMapsService';
 import { MINECRAFT_SKINS, MinecraftSkin } from './services/skins';
 import { GameServer, serverNetwork } from './services/serverNetwork';
@@ -43,6 +44,7 @@ export default function App() {
   const [showWeatherModal, setShowWeatherModal] = useState(false);
   const [showLocationPrompt, setShowLocationPrompt] = useState(false);
   const [showCreditsModal, setShowCreditsModal] = useState(false);
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
 
   // Live animated global player counter
   const [totalPlayers, setTotalPlayers] = useState(serverNetwork.getTotalPlayers());
@@ -146,6 +148,7 @@ export default function App() {
             onOpenPerformance={() => setShowPerformanceModal(true)}
             onOpenOccasions={() => setShowOccasionsModal(true)}
             onOpenCredits={() => setShowCreditsModal(true)}
+            onOpenDownload={() => setShowDownloadModal(true)}
           />
 
           {/* Top Bar HUD - Clean non-overlapping centered toolbar */}
@@ -197,16 +200,16 @@ export default function App() {
               👕 {currentSkin.name}
             </button>
 
-            {/* Leaderboard */}
+            {/* Download Game Button */}
             <button
               onClick={() => {
                 soundEngine.playClick();
-                setShowLeaderboard(true);
+                setShowDownloadModal(true);
               }}
-              className="mc-btn px-2.5 py-1 text-[11px] flex items-center gap-1 cursor-pointer"
-              id="btn-hud-leaderboard"
+              className="mc-btn px-2.5 py-1 text-[11px] flex items-center gap-1 cursor-pointer text-emerald-300 font-bold border-emerald-500/80"
+              id="btn-hud-download-top"
             >
-              🏆 Rank
+              📥 Download
             </button>
 
             {/* Credits (Mark David V. Valmores) */}
@@ -269,6 +272,17 @@ export default function App() {
 
             {/* Quick Action Badges */}
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  soundEngine.playClick();
+                  setShowDownloadModal(true);
+                }}
+                className="mc-btn px-3 py-2 text-xs font-minecraft text-emerald-300 flex items-center gap-1.5 cursor-pointer hover:scale-105 transition-transform border-emerald-500/80 shadow-[0_0_10px_rgba(16,185,129,0.3)]"
+                id="btn-title-download-badge"
+              >
+                📥 Download Game
+              </button>
+
               <button
                 onClick={() => {
                   soundEngine.playClick();
@@ -441,6 +455,20 @@ export default function App() {
                 👨‍💻 Solo Dev Credits
               </button>
             </div>
+
+            {/* Prominent Direct Download Button in Main Menu */}
+            <button
+              onClick={() => {
+                soundEngine.playClick();
+                setShowDownloadModal(true);
+              }}
+              className="mc-btn py-2.5 px-4 text-xs font-minecraft text-emerald-300 flex items-center justify-center gap-2 cursor-pointer border-emerald-500/80 shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:scale-102 transition-transform"
+              id="btn-menu-download-game"
+            >
+              <span>📥</span>
+              <span>DOWNLOAD GAME (PC • ANDROID APK • iOS IPA)</span>
+              <span>⚡</span>
+            </button>
           </div>
 
           {/* Footer Info with Developer Credit */}
@@ -562,6 +590,12 @@ export default function App() {
       {showCreditsModal && (
         <DeveloperCreditsModal
           onClose={() => setShowCreditsModal(false)}
+        />
+      )}
+
+      {showDownloadModal && (
+        <DownloadGameModal
+          onClose={() => setShowDownloadModal(false)}
         />
       )}
 

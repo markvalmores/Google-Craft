@@ -79,6 +79,7 @@ interface VoxelWorldProps {
   onOpenPerformance?: () => void;
   onOpenOccasions?: () => void;
   onOpenCredits?: () => void;
+  onOpenDownload?: () => void;
 }
 
 export const VoxelWorld: React.FC<VoxelWorldProps> = ({
@@ -94,7 +95,8 @@ export const VoxelWorld: React.FC<VoxelWorldProps> = ({
   onOpenWeather,
   onOpenPerformance,
   onOpenOccasions,
-  onOpenCredits
+  onOpenCredits,
+  onOpenDownload
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedBlockIdx, setSelectedBlockIdx] = useState(0);
@@ -1465,6 +1467,21 @@ export const VoxelWorld: React.FC<VoxelWorldProps> = ({
         >
           🪽 {isFlying ? 'Fly' : 'Walk'}
         </button>
+
+        {/* Download Game (PC / APK / IPA) */}
+        {onOpenDownload && (
+          <button
+            onClick={() => {
+              soundEngine.playClick();
+              onOpenDownload();
+            }}
+            className="mc-btn px-2.5 py-1.5 text-[10px] flex items-center gap-1 cursor-pointer text-emerald-300 font-bold border-emerald-500/80"
+            title="Download Game (PC Launcher, Android APK, iOS IPA, Game Icons)"
+            id="btn-hud-download-game"
+          >
+            📥 Download
+          </button>
+        )}
 
         {/* Developer Credits (Mark David V. Valmores) */}
         <button
