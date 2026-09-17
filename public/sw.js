@@ -1,21 +1,21 @@
 // Google Craft Service Worker for Offline Game Play
-const CACHE_NAME = 'google-craft-v2.5';
+const CACHE_NAME = 'google-craft-v3.0'; // Bump version to invalidate old cache
+
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
   '/game-icon.png',
   '/apple-touch-icon.png',
-  '/pwa-192x192.png',
-  '/pwa-512x512.png',
   '/favicon.ico'
 ];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(STATIC_ASSETS);
-    }).then(() => self.skipWaiting())
+    })
   );
 });
 
@@ -35,17 +35,39 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+
+  // Network-First strategy for HTML navigation requests
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          return caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, networkResponse.clone());
+            return networkResponse;
+          });
+        })
+        .catch(() => {
+          return caches.match('/index.html');
+        })
+    );
+    return;
+  }
+
+  // Stale-While-Revalidate or Cache-First for assets
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
+        // Fetch in background to update cache for next time
+        fetch(event.request).then((networkResponse) => {
+          if (networkResponse.ok) {
+             caches.open(CACHE_NAME).then((cache) => {
+               cache.put(event.request, networkResponse.clone());
+             });
+          }
+        }).catch(() => {});
         return cachedResponse;
       }
-      return fetch(event.request).catch(() => {
-        // Fallback to cache index for navigation
-        if (event.request.mode === 'navigate') {
-          return caches.match('/index.html');
-        }
-      });
+      return fetch(event.request);
     })
   );
 });
