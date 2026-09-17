@@ -9,21 +9,71 @@
     <meta property="og:description" content="A Google Maps Minecraft adventure to explore real-world landmarks, build voxel structures, switch skins, and play in 34 low-latency global multiplayer servers." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    
     <link rel="icon" type="image/png" href="/game-icon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#ffffff" />
+    
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Google Craft" />
+    
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=Silkscreen:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
     <script>
+      // 1. Detect if a JS or CSS chunk fails to load (e.g. Vercel deleted old hashes)
+      window.addEventListener('error', function(e) {
+        var target = e.target || e.srcElement;
+        var isElementLoadError = target instanceof HTMLElement;
+        if (isElementLoadError && (target.tagName.toLowerCase() === 'script' || target.tagName.toLowerCase() === 'link')) {
+          console.warn("Detected missing chunk. Purging service workers and caches to recover...");
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+              for (var i = 0; i < registrations.length; i++) {
+                registrations[i].unregister();
+              }
+            });
+          }
+          if ('caches' in window) {
+            caches.keys().then(function(names) {
+              for (var i = 0; i < names.length; i++) {
+                caches.delete(names[i]);
+              }
+            });
+          }
+          // Prevent infinite reload loops
+          if (!sessionStorage.getItem('chunk_recovered')) {
+            sessionStorage.setItem('chunk_recovered', 'true');
+            window.location.reload(true);
+          }
+        }
+      }, true);
+
+      // 2. Standard Service Worker Registration
       if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(() => {});
+          navigator.serviceWorker.getRegistrations().then((registrations) => {
+             // For Vercel, it is often safer to just kill old SWs on every fresh load to prevent them from breaking future deployments.
+             // If we really want offline play, we can register it, but for a game, it's risky if caching breaks the SPA.
+             // We'll register the new one.
+             navigator.serviceWorker.register('/sw.js').then((reg) => {
+               reg.onupdatefound = () => {
+                 const installingWorker = reg.installing;
+                 if (installingWorker) {
+                   installingWorker.onstatechange = () => {
+                     if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                       console.log('New update available. Reloading...');
+                       window.location.reload();
+                     }
+                   };
+                 }
+               };
+             }).catch(() => {});
+          });
         });
       }
     </script>
@@ -33,4 +83,3 @@
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
